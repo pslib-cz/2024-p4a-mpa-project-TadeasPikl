@@ -40,6 +40,17 @@ android {
 }
 
 dependencies {
+    // Jetpack Compose integration
+    implementation(libs.androidx.navigation.compose)
+    // Views/Fragments integration
+    implementation(libs.androidx.navigation.fragment)
+    implementation(libs.androidx.navigation.ui)
+    // Feature module support for Fragments
+    implementation(libs.androidx.navigation.dynamic.features.fragment)
+    // Testing Navigation
+    androidTestImplementation(libs.androidx.navigation.testing)
+    // JSON serialization library, works with the Kotlin serialization plugin
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.rssparser)
@@ -51,8 +62,8 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-//    implementation(libs.androidx.material)
     implementation(libs.androidx.core.i18n)
+    implementation(libs.androidx.navigation.compose)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

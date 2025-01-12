@@ -2,6 +2,7 @@ package com.tadeaspikl.rssreader
 
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -40,11 +41,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.runtime.MutableState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.draw.clip
@@ -53,8 +55,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.navigation.compose.rememberNavController
 import coil3.compose.rememberAsyncImagePainter
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.text.ParseException
 import java.text.SimpleDateFormat
@@ -71,12 +73,10 @@ class MainActivity : ComponentActivity() {
         val channelUrls = StorageManipulation.loadChannels(context = this)
 //        channelUrls.add("https://lorem-rss.herokuapp.com/feed")
 //        channelUrls.add("https://maia.crimew.gay/feed.xml")
-//        channelUrls.add("https://www.reddit.com/r/furry_irl/.rss")
-//        channelUrls.add("https://afed.cz/rss")
-
 
         setContent {
             RSSReaderTheme {
+                val navController = rememberNavController()
                 MainScaffold(channelUrls)
             }
         }
@@ -171,13 +171,19 @@ fun MainScaffold(channelUrls: MutableList<String>) {
                 ),
                 title = {
                     Text("RSS Reader")
+                },
+                actions = {
+                    IconButton(
+                        content = { Icon(Icons.Filled.Settings, "Settings") },
+                        onClick = {  },
+                    )
                 }
             )
         },
         floatingActionButton = {
             FloatingActionButton(
+                content = { Icon(Icons.Filled.Add, "Add") },
                 onClick = { showDialog = true },
-                content = { Icon(Icons.Filled.Add, "Add") }
             )
         }
     ) { innerPadding ->
