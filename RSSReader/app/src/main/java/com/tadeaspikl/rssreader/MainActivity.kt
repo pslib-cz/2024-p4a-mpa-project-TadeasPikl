@@ -21,8 +21,10 @@ import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.prof18.rssparser.RssParser
 import com.prof18.rssparser.model.RssChannel
@@ -37,13 +39,23 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.MutableState
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.rememberAsyncImagePainter
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -56,12 +68,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val channelUrls = mutableSetOf<String>()
-        channelUrls.add("https://lorem-rss.herokuapp.com/feed")
-        channelUrls.add("https://maia.crimew.gay/feed.xml")
-        channelUrls.add("https://www.reddit.com/r/furry_irl/.rss")
-        channelUrls.add("https://afed.cz/rss")
-
+        val channelUrls = StorageManipulation.loadChannels(context = this)
+//        channelUrls.add("https://lorem-rss.herokuapp.com/feed")
+//        channelUrls.add("https://maia.crimew.gay/feed.xml")
+//        channelUrls.add("https://www.reddit.com/r/furry_irl/.rss")
+//        channelUrls.add("https://afed.cz/rss")
 
 
         setContent {
@@ -92,46 +103,63 @@ suspend fun receiveUpdates(channelUrls: Iterable<String>): List<RssItem> {
         "yyyy-MM-dd'T'HH:mm:ssZ",
         "yyyy-MM-dd'T'HH:mm:ss'Z'",
     )
-    val rfc822Formatter: DateFormat = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", Locale.getDefault())
+    val rfc822Formatter: DateFormat =
+        SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", Locale.getDefault())
     rfc822Formatter.timeZone = TimeZone.getDefault()
 
     val sortedArticles = articles.sortedByDescending { item ->
-            dateFormats
-                .mapNotNull { format ->
-                    try {
-                        SimpleDateFormat(format, Locale.ENGLISH).parse(item.pubDate)
-                    } catch (e: ParseException) {
-                        null
-                    }
+        dateFormats
+            .mapNotNull { format ->
+                try {
+                    item.pubDate?.let { SimpleDateFormat(format, Locale.ENGLISH).parse(it) }
+                } catch (e: ParseException) {
+                    null
                 }
-                .firstOrNull()
-        }
+            }
+            .firstOrNull()
+    }
         .map { item ->
-            item.copy(pubDate = rfc822Formatter.format(
+            item.copy(
+                pubDate = rfc822Formatter.format(
                     dateFormats.mapNotNull { format ->
-                        try { SimpleDateFormat(format, Locale.ENGLISH).parse(item.pubDate) } catch (e: ParseException) { null }
+                        try {
+                            item.pubDate?.let { SimpleDateFormat(format, Locale.ENGLISH).parse(it) }
+                        } catch (e: ParseException) {
+                            null
+                        }
                     }.firstOrNull() ?: Date(0) // Fallback to epoch if parsing fails
-            ))
+                )
+            )
         }
 
     return sortedArticles
 }
 
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScaffold(channelUrls: Iterable<String>) {
-    val coroutineScope = rememberCoroutineScope()
+fun MainScaffold(channelUrls: MutableList<String>) {
+    val refreshScope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
     val articles = remember { mutableStateOf<List<RssItem>>(emptyList()) }
+    var showDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
-    LaunchedEffect(channelUrls) {
+    fun refresh() = refreshScope.launch {
+        refreshing = true
         try {
             articles.value = receiveUpdates(channelUrls)
         } catch (e: Exception) {
             e.message?.let { Log.e("ReceiveUpdates", it) }
         }
-
+        refreshing = false
     }
+
+    LaunchedEffect(true) {
+        refresh()
+    }
+
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -148,16 +176,30 @@ fun MainScaffold(channelUrls: Iterable<String>) {
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = {},
-                content = {Icon(Icons.Filled.Add, "Add")}
+                onClick = { showDialog = true },
+                content = { Icon(Icons.Filled.Add, "Add") }
             )
         }
-    ) { innerPadding -> LazyColumn(modifier = Modifier.padding(innerPadding)) {
-        items(articles.value) { article ->
-            ArticleTile(article)
+    ) { innerPadding ->
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = { refresh() },
+            modifier = Modifier.padding(innerPadding).fillMaxSize()
+        ) {
+            LazyColumn {
+                items(articles.value) { article ->
+                    ArticleTile(article)
+                }
+            }
         }
-    } }
+    }
+
+    if (showDialog) {
+        RssAddDialog(context = context, refresh = { refresh() }, channelUrls = channelUrls, onDismiss = { showDialog = false })
+    }
 }
+
+
 
 @Composable
 fun ArticleTile(article: RssItem) {
@@ -240,4 +282,43 @@ fun ArticleTile(article: RssItem) {
             }
         }
     }
+}
+
+
+
+@Composable
+fun RssAddDialog(context: android.content.Context, refresh: () -> Unit, channelUrls: MutableList<String>, onDismiss: () -> Unit) {
+    var rssUrl by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add RSS Feed") },
+        text = {
+            OutlinedTextField(
+                value = rssUrl,
+                onValueChange = { rssUrl = it },
+                label = { Text("RSS Feed URL") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    channelUrls.add(rssUrl)
+                    StorageManipulation.saveChannels(context = context, channelUrls)
+                    refresh()
+                    onDismiss()
+                }
+            ) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            Button(
+                onClick = onDismiss
+            ) {
+                Text("Cancel")
+            }
+        }
+    )
 }
