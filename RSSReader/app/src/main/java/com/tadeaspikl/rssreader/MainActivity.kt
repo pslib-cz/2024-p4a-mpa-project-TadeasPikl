@@ -36,6 +36,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -53,6 +54,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.rememberNavController
@@ -64,6 +67,7 @@ import java.util.Date
 import java.util.TimeZone
 import java.text.DateFormat
 import java.util.Locale
+import java.util.regex.Pattern
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,11 +89,18 @@ class MainActivity : ComponentActivity() {
 
 suspend fun getAllChannels(urls: Iterable<String>): Iterable<RssChannel> {
     val rssParser = RssParser()
-    return urls.map { url ->
-        coroutineScope {
-            async { rssParser.getRssChannel(url) }
+    val channels = mutableListOf<RssChannel>()
+
+    for (url in urls) {
+        try {
+            val channel = rssParser.getRssChannel(url)
+            channels.add(channel)
+        } catch (e: Exception) {
+            Log.e("RSS Parser", "Error parsing $url: ${e.message}")
         }
-    }.awaitAll().toSet()
+    }
+
+    return channels
 }
 
 suspend fun receiveUpdates(channelUrls: Iterable<String>): List<RssItem> {
@@ -193,6 +204,7 @@ fun MainScaffold(channelUrls: MutableList<String>) {
             modifier = Modifier.padding(innerPadding).fillMaxSize()
         ) {
             LazyColumn {
+
                 items(articles.value) { article ->
                     ArticleTile(article)
                 }
@@ -209,11 +221,12 @@ fun MainScaffold(channelUrls: MutableList<String>) {
 
 @Composable
 fun ArticleTile(article: RssItem) {
+    val uriHandler: UriHandler = LocalUriHandler.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp)
-            .clickable { }
+            .clickable { article.link?.let { uriHandler.openUri(it) } }
             .background(
                 color = MaterialTheme.colorScheme.surface,
                 shape = RoundedCornerShape(8.dp)
@@ -295,6 +308,12 @@ fun ArticleTile(article: RssItem) {
 @Composable
 fun RssAddDialog(context: android.content.Context, refresh: () -> Unit, channelUrls: MutableList<String>, onDismiss: () -> Unit) {
     var rssUrl by remember { mutableStateOf("") }
+    var isValidUrl by remember { mutableStateOf(true) }
+
+    fun isValidRssUrl(url: String): Boolean {
+        val urlPattern = Pattern.compile("https?:\\/\\/(www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_\\+.~#?&//=]*)")
+        return urlPattern.matcher(url).matches()
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -304,12 +323,17 @@ fun RssAddDialog(context: android.content.Context, refresh: () -> Unit, channelU
                 value = rssUrl,
                 onValueChange = { rssUrl = it },
                 label = { Text("RSS Feed URL") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                isError = !isValidUrl
             )
         },
         confirmButton = {
             Button(
                 onClick = {
+                    isValidUrl = isValidRssUrl(rssUrl)
+                    if (!isValidUrl || channelUrls.contains(rssUrl)) {
+                        return@Button
+                    }
                     channelUrls.add(rssUrl)
                     StorageManipulation.saveChannels(context = context, channelUrls)
                     refresh()
